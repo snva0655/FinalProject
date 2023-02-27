@@ -1,0 +1,114 @@
+---
+title: "Johns_Hopkins_Data_Analysis"
+output: html_document
+date: "2023-02-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project Outline 
+
+1) We will import US COVID cases and deaths from the Johns Hopkins data set on github. 
+2) We will clean up and prepare the data by removing unnecessary variables and suitably organizing it for our purposes. 
+3) We will summarize data by region i.e., Northeast, West, South, Midwest, and US Possessions and Cruise Ships. 
+4) We are interested in identifying regional disparities, if any, in a) mortality rate and b) case mortality rate in the United States. 
+5) Based on the observed data, we will fit a model for case mortality rate in the US by state. 
+
+```{r echo=TRUE, message=FALSE}
+
+library(tidyverse)
+library(lubridate)
+options(warn=-1)
+```
+
+### Read in US cases and deaths from github. 
+
+```{r, message=FALSE}
+
+url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+file_names <- c("time_series_covid19_confirmed_global.csv","time_series_covid19_deaths_global.csv","time_series_covid19_confirmed_US.csv","time_series_covid19_deaths_US.csv")
+
+urls <- str_c(url_in, file_names)
+
+us_cases <- read_csv(urls[3])
+us_deaths <- read_csv(urls[4])
+```
+
+### Clean up the Data 
+
+```{r, message=FALSE}
+
+#Tidy up the data so that the cases and deaths for each date show up as a row
+
+us_cases <- us_cases %>% pivot_longer(cols=-c(UID,'iso2','iso3',code3,FIPS,'Admin2','Province_State', 'Country_Region', Lat, Long_, 'Combined_Key'),names_to="date",values_to="cases") %>% select(-c(UID,'iso2','iso3',code3,FIPS,Lat,Long_))
+
+us_deaths <- us_deaths %>% pivot_longer(cols=-c(UID,'iso2','iso3',code3,FIPS,'Admin2','Province_State', 'Country_Region', Lat, Long_, 'Combined_Key',Population),names_to="date",values_to="deaths") %>% select(-c(UID,'iso2','iso3',code3,FIPS,Lat,Long_))
+
+# Make "date" into a date object in both data frames
+
+us_cases <- us_cases %>% mutate(date=mdy(date))
+us_deaths <- us_deaths %>% mutate(date=mdy(date))
+
+#Join both the data frames into one data frame "us" and filter out all rows with a case count of 0.
+
+us <- us_cases %>% full_join(us_deaths)
+us <- us %>% filter(cases > 0)
+```
+
+### Summarize Data by Region
+
+```{r, message=FALSE}
+
+# By examining the "cases" column, we observed that for each date, the case count is cumulative for each county. Therefore, we will modify the cases column to contain daily case counts for each county and create a new data frame "us_by_county"
+
+us_by_county <- us %>% group_by(Combined_Key, Province_State, Population) %>% summarize(total_cases=max(cases), total_deaths=max(deaths))
+
+# We will create another data frame "us_by_state" from "us_by_county" by summarizing data by state. 
+
+us_by_state <- us_by_county %>% group_by(Province_State) %>% summarize(total_cases=sum(total_cases), total_deaths=sum(total_deaths), Population = sum(Population))
+
+# Add the "region" column to the "us_by_state" data frame by assigning each state to a geographic region 
+
+us_by_state <- us_by_state %>% mutate(Region=case_when(Province_State=="California"|Province_State=="Arizona"|Province_State=="Oregon"|Province_State=="Colorado"|Province_State=="Idaho"|Province_State=="Montana"|Province_State=="Wyoming"|Province_State=="Nevada"|Province_State=="New Mexico"|Province_State=="Utah"|Province_State=="Hawaii"|Province_State=="Alaska"|Province_State=="Washington"~"West", Province_State=="Illinois"|Province_State=="Indiana"|Province_State=="Michigan"|Province_State=="Wisconsin"|Province_State=="Ohio"|Province_State=="Kansas"|Province_State=="Minnesota"|Province_State=="Iowa"|Province_State=="Missouri"|Province_State=="Nebraska"|Province_State=="North Dakota"|Province_State=="South Dakota"~"Midwest", Province_State=="Delaware"|Province_State=="District of Columbia"|Province_State=="Florida"|Province_State=="Georgia"|Province_State=="Maryland"|Province_State=="North Carolina"|Province_State=="South Carolina"|Province_State=="Virginia"|Province_State=="West Virginia"|Province_State=="Alabama"|Province_State=="Kentucky"|Province_State=="Mississippi"|Province_State=="Tennessee"|Province_State=="Arkansas"|Province_State=="Louisiana"|Province_State=="Oklahoma"|Province_State=="Texas"~"South", Province_State=="Connecticut"|Province_State=="Maine"|Province_State=="Massachusetts"|Province_State=="New Hampshire"|Province_State=="Rhode Island"|Province_State=="Vermont"|Province_State=="New Jersey"|Province_State=="New York"|Province_State=="Pennsylvania"~"Northeast", Province_State=="Diamond Princess"|Province_State=="Virgin Islands"|Province_State=="Northern Mariana Islands"|Province_State=="American Samoa"|Province_State=="Grand Princess"|Province_State=="Guam"|Province_State=="Puerto Rico"~"Islands & Ships"))
+
+# Create a new data frame "us_by_region" from "us_by_state" by summarizing cases and deaths for each region. We add three new columns to the data frame: "cases_per_million", "deaths_per_million", "deaths_per_100_cases".
+
+us_by_region <- us_by_state %>% group_by(Region)%>%summarize(total_cases=sum(total_cases), total_deaths = sum(total_deaths), Population = sum(Population)) %>% mutate(cases_per_million = total_cases*1000000/Population, deaths_per_million = total_deaths*1000000/Population, deaths_per_100_cases = total_deaths*100/total_cases)
+```
+
+### Visualize Data
+
+```{r}
+
+# Visualize Case Mortality by region in the US
+
+us_by_region %>% ggplot(aes(x=Region, y=deaths_per_100_cases, fill=Region)) + geom_bar(stat="identity", width=0.2)+theme(axis.text.x=element_text(angle=90))+ labs(title=str_c("COVID19 Case Mortality Percentage by Region in the US"),y="Case Mortality Percentage") + theme(plot.title = element_text(hjust = 0.5))
+
+# Visualize Deaths/million by region in the US
+
+us_by_region %>% ggplot(aes(x=Region, y=deaths_per_million, fill=Region)) + geom_bar(stat="identity", width=0.2)+theme(axis.text.x=element_text(angle=90))+ labs(title=str_c("COVID19 Mortality Rate by Region in the US"),y="Deaths per Million") + theme(plot.title = element_text(hjust = 0.5))
+```
+
+### Fit a Linear Model to the Data
+
+```{r, message=FALSE}
+
+# Add case mortality rate information to us_by_state data frame
+us_by_state <- us_by_state %>% mutate(actual_case_mortality_rate=total_deaths*100/total_cases)
+
+# Fit a linear model for case mortality rate
+mod <- lm(actual_case_mortality_rate ~ total_cases, data = us_by_state)
+
+# Generate predicted case mortality rate
+predicted_case_mortality_rate <- predict(mod)
+
+# Plot both actual and predicted case mortality rate.
+us_by_state %>% ggplot(aes(x=Province_State, y=actual_case_mortality_rate, color="actual_case_mortality_rate")) + geom_bar(stat="identity", width=0.2) + geom_point(aes(x=Province_State, y=predicted_case_mortality_rate,  color="predicted_case_mortality_rate"))  + theme(axis.text.x=element_text(angle=90))+labs(title=str_c("COVID19 Case Mortality Percentage by State:"), subtitle=str_c("Actual and Predicted"),x= "State",y="Case Mortality Percentage") + theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5)) 
+```
+ 
+### Analysis 
+
+We did not observe any significant regional disparities in either case mortality rate or mortality rate. The regions with the largest case mortality rate were the South and Northeast, and the smallest were the West and Islands&Ships. A bias I had coming into the project was that the Southern states would have had a larger mortality rate because of their political views and unwillingness to follow certain mandates, but the data did not prove this. The linear model that we fit to the data proved to be a good descriptor. The only outlier in the data was the cruise ship "Grand Princess", which had a 3% mortality rate. The values for most of the other states were close to what the model predicted. 
