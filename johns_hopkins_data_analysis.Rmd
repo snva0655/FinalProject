@@ -10,10 +10,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Project Outline 
 
-1) We will import US COVID cases and deaths from the Johns Hopkins data set on github. 
+1) We will import US COVID cases and deaths from the Johns Hopkins data set on github. This contains up to date data on COVID19 on both global and US cases and deaths. In this project, we will only be focusing on the US cases and deaths, not on the global cases and deaths. 
+
+https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/
+
 2) We will clean up and prepare the data by removing unnecessary variables and suitably organizing it for our purposes. 
 3) We will summarize data by region i.e., Northeast, West, South, Midwest, and US Possessions and Cruise Ships. 
-4) We are interested in identifying regional disparities, if any, in a) mortality rate and b) case mortality rate in the United States. 
+4) The question we want to answer is what regional disparities, if any, exist in a) mortality rate and b) case mortality rate in the United States? 
 5) Based on the observed data, we will fit a model for case mortality rate in the US by state. 
 
 ```{r echo=TRUE, message=FALSE}
@@ -23,7 +26,7 @@ library(lubridate)
 options(warn=-1)
 ```
 
-### Read in US cases and deaths from github. 
+### Read in US Cases and Deaths from github 
 
 ```{r, message=FALSE}
 
@@ -37,7 +40,7 @@ us_cases <- read_csv(urls[3])
 us_deaths <- read_csv(urls[4])
 ```
 
-### Clean up the Data 
+### Clean Up the Data 
 
 ```{r, message=FALSE}
 
@@ -58,7 +61,7 @@ us <- us_cases %>% full_join(us_deaths)
 us <- us %>% filter(cases > 0)
 ```
 
-### Summarize Data by Region
+### Summarize the Data by Region
 
 ```{r, message=FALSE}
 
@@ -79,7 +82,7 @@ us_by_state <- us_by_state %>% mutate(Region=case_when(Province_State=="Californ
 us_by_region <- us_by_state %>% group_by(Region)%>%summarize(total_cases=sum(total_cases), total_deaths = sum(total_deaths), Population = sum(Population)) %>% mutate(cases_per_million = total_cases*1000000/Population, deaths_per_million = total_deaths*1000000/Population, deaths_per_100_cases = total_deaths*100/total_cases)
 ```
 
-### Visualize Data
+### Visualize the Data
 
 ```{r}
 
@@ -111,4 +114,4 @@ us_by_state %>% ggplot(aes(x=Province_State, y=actual_case_mortality_rate, color
  
 ### Analysis 
 
-We did not observe any significant regional disparities in either case mortality rate or mortality rate. The regions with the largest case mortality rate were the South and Northeast, and the smallest were the West and Islands&Ships. A bias I had coming into the project was that the Southern states would have had a larger mortality rate because of their political views and unwillingness to follow certain mandates, but the data did not prove this. The linear model that we fit to the data proved to be a good descriptor. The only outlier in the data was the cruise ship "Grand Princess", which had a 3% mortality rate. The values for most of the other states were close to what the model predicted. 
+We did not observe any significant regional disparities in either case mortality rate or mortality rate. The regions with the largest case mortality rate were the South and Northeast, and the smallest were the West and Islands&Ships. A bias I had coming into the project was that the Southern states would have had a larger mortality rate because of their political views and unwillingness to follow certain mandates, but the data did not prove this. The linear model that we fit to the data proved to be a good descriptor. The only outlier in the data was the cruise ship "Grand Princess", which had a 3% mortality rate. The values for most of the other states were close to what the model predicted.
